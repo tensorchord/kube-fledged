@@ -142,7 +142,36 @@ func NewController(
 			controller.enqueueImageCache(images.ImageCacheDelete, obj, nil)
 		},
 	})
+
+	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.handleNodeAddition,
+	})
 	return controller
+}
+
+func (c *Controller) handleNodeAddition(obj interface{}) {
+	node, ok := obj.(*corev1.Node)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			return
+		}
+		node, ok = tombstone.Obj.(*corev1.Node)
+		if !ok {
+			glog.Errorf("Tombstone contained object that is not a Node %#v", obj)
+			return
+		}
+	}
+	glog.V(4).Infof("Node %s added", node.Name)
+	ics, err := c.imageCachesLister.ImageCaches(c.fledgedNameSpace).List(labels.Everything())
+	if err != nil {
+		glog.Errorf("Error listing ImageCaches: %s", err.Error())
+		return
+	}
+	for _, ic := range ics {
+		c.enqueueImageCache(images.ImageCacheRefresh, ic, ic)
+	}
 }
 
 // PreFlightChecks performs pre-flight checks and actions before the controller is started

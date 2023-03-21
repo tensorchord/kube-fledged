@@ -1,3 +1,5 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
 before:
   hooks:
     - go mod tidy
@@ -7,12 +9,23 @@ builds:
     goos:
       - linux
       - darwin
+    id: controller
+    main: ./cmd/controller
+    binary: controller
+    ldflags:
+      - -s -w
+      - -X github.com/senthilrch/kube-fledged/pkg/version.version={{ .Version }}
+      - -X github.com/senthilrch/kube-fledged/pkg/version.buildDate={{ .Date }}
+      - -X github.com/senthilrch/kube-fledged/pkg/version.gitCommit={{ .Commit }}
+      - -X github.com/senthilrch/kube-fledged/pkg/version.gitTreeState=clean
+      - -X github.com/senthilrch/kube-fledged/pkg/version.gitTag={{ .Tag }}
 archives:
-  - replacements:
-      darwin: Darwin
+  - id: controller
+    format: binary
+    builds:
+      - controller
+    replacements:
       linux: Linux
-      386: i386
-      amd64: x86_64
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -21,5 +34,21 @@ changelog:
   sort: asc
   filters:
     exclude:
+      - '^build:'
+      - '^ci:'
       - '^docs:'
       - '^test:'
+      - '^chore:'
+dockers:
+- image_templates:
+  - "modelzai/kube-fledged-controller:v{{ .Version }}-amd64"
+  use: buildx
+  dockerfile: Dockerfile
+  ids:
+  - controller
+  build_flag_templates:
+  - "--platform=linux/amd64"
+docker_manifests:
+- name_template: modelzai/kube-fledged-controller:v{{ .Version }}
+  image_templates:
+  - modelzai/kube-fledged-controller:v{{ .Version }}-amd64

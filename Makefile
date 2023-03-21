@@ -1,265 +1,206 @@
-# Copyright 2018 The kube-fledged authors.
+# Copyright 2022 TensorChord Inc.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# The old school Makefile, following are required targets. The Makefile is written
+# to allow building multiple binaries. You are free to add more targets or change
+# existing implementations, as long as the semantics are preserved.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#   make              - default to 'build' target
+#   make lint         - code analysis
+#   make test         - run unit test (or plus integration test)
+#   make build        - alias to build-local target
+#   make build-local  - build local binary targets
+#   make build-linux  - build linux binary targets
+#   make container    - build containers
+#   $ docker login registry -u username -p xxxxx
+#   make push         - push containers
+#   make clean        - clean up targets
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Not included but recommended targets:
+#   make e2e-test
+#
+# The makefile is also responsible to populate project version information.
+#
 
-.PHONY: clean clean-controller clean-cri-client clean-operator controller-amd64 controller-image cri-client-image operator-image build-images push-images test deploy update remove hack
-# Default tag and architecture. Can be overridden
-TAG?=$(shell git describe --tags --dirty)
-ARCH?=amd64
-# Only enable CGO (and build the UDP backend) on AMD64
-ifeq ($(ARCH),amd64)
-	CGO_ENABLED=1
-else
-	CGO_ENABLED=0
-endif
+#
+# Tweak the variables based on your project.
+#
 
-GOARM=7
-DOCKER_CLI_EXPERIMENTAL=enabled
+# This repo's root import path (under GOPATH).
+ROOT := github.com/senthilrch/kube-fledged
 
-ifndef CONTROLLER_IMAGE_REPO
-  CONTROLLER_IMAGE_REPO=docker.io/senthilrch/kubefledged-controller
-endif
+# Target binaries. You can build multiple binaries for a single project.
+TARGETS := controller
 
-ifndef WEBHOOK_SERVER_IMAGE_REPO
-  WEBHOOK_SERVER_IMAGE_REPO=docker.io/senthilrch/kubefledged-webhook-server
-endif
+# Container image prefix and suffix added to targets.
+# The final built images are:
+#   $[REGISTRY]/$[IMAGE_PREFIX]$[TARGET]$[IMAGE_SUFFIX]:$[VERSION]
+# $[REGISTRY] is an item from $[REGISTRIES], $[TARGET] is an item from $[TARGETS].
+IMAGE_PREFIX ?= $(strip )
+IMAGE_SUFFIX ?= $(strip )
 
-ifndef CRI_CLIENT_IMAGE_REPO
-  CRI_CLIENT_IMAGE_REPO=docker.io/senthilrch/kubefledged-cri-client
-endif
+# Container registries.
+REGISTRY ?= ghcr.io/tensorchord
 
-ifndef OPERATOR_IMAGE_REPO
-  OPERATOR_IMAGE_REPO=docker.io/senthilrch/kubefledged-operator
-endif
+# Container registry for base images.
+BASE_REGISTRY ?= docker.io
+BASE_REGISTRY_USER ?= tensorchord
 
-ifndef ALPINE_VERSION
-  ALPINE_VERSION=3.16.2
-endif
+# Disable CGO by default.
+CGO_ENABLED ?= 0
 
-ifndef CRICTL_VERSION
-  CRICTL_VERSION=v1.25.0
-endif
+#
+# These variables should not need tweaking.
+#
 
-ifndef DOCKER_VERSION
-  DOCKER_VERSION=20.10.20
-endif
+# It's necessary to set this because some environments don't link sh -> bash.
+export SHELL := bash
 
-ifndef GOLANG_VERSION
-  GOLANG_VERSION=1.19.2
-endif
+# It's necessary to set the errexit flags for the bash shell.
+export SHELLOPTS := errexit
 
-ifndef OPERATORSDK_VERSION
-  OPERATORSDK_VERSION=v1.24.1
-endif
+PACKAGE_NAME := github.com/senthilrch/kube-fledged
+GOLANG_CROSS_VERSION  ?= v1.17.6
 
-ifndef RELEASE_VERSION
-  RELEASE_VERSION=v0.11.0-alpha
-endif
+# Project main package location (can be multiple ones).
+CMD_DIR := ./cmd
 
-ifndef TARGET_PLATFORMS
-  TARGET_PLATFORMS=linux/amd64,linux/arm/v7,linux/arm64/v8
-endif
+# Project output directory.
+OUTPUT_DIR := ./bin
+DEBUG_DIR := ./debug-bin
 
-ifndef OPERATOR_TARGET_PLATFORMS
-  OPERATOR_TARGET_PLATFORMS=linux/amd64,linux/arm64
-endif
+# Build directory.
+BUILD_DIR := ./build
 
-ifndef BUILD_OUTPUT
-  BUILD_OUTPUT=--push
-endif
+# Current version of the project.
+VERSION ?= $(shell git describe --match 'v[0-9]*' --always --tags --abbrev=0)
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+GIT_COMMIT=$(shell git rev-parse HEAD)
+GIT_TAG=$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi)
+GIT_TREE_STATE=$(shell if [ -z "`git status --porcelain`" ]; then echo "clean" ; else echo "dirty"; fi)
+GITSHA ?= $(shell git rev-parse --short HEAD)
 
-ifndef PROGRESS
-  PROGRESS=auto
-endif
+# Track code version with Docker Label.
+DOCKER_LABELS ?= git-describe="$(shell date -u +v%Y%m%d)-$(shell git describe --tags --always --dirty)"
 
-ifndef KUBEFLEDGED_NAMESPACE
-  KUBEFLEDGED_NAMESPACE=kube-fledged
-endif
+# Golang standard bin directory.
+GOPATH ?= $(shell go env GOPATH)
+GOROOT ?= $(shell go env GOROOT)
+BIN_DIR := $(GOPATH)/bin
+GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
 
-HTTP_PROXY_CONFIG=
-ifdef HTTP_PROXY
-  HTTP_PROXY_CONFIG=--build-arg http_proxy=${HTTP_PROXY}
-endif
+# check if we need embed the dashboard
+DASHBOARD_BUILD ?= debug
 
-HTTPS_PROXY_CONFIG=
-ifdef HTTPS_PROXY
-  HTTPS_PROXY_CONFIG=--build-arg https_proxy=${HTTPS_PROXY}
-endif
+# Default golang flags used in build and test
+# -mod=vendor: force go to use the vendor files instead of using the `$GOPATH/pkg/mod`
+# -p: the number of programs that can be run in parallel
+# -count: run each test and benchmark 1 times. Set this flag to disable test cache
+export GOFLAGS ?= -count=1
 
+#
+# Define all targets. At least the following commands are required:
+#
 
-### BUILD
-clean: clean-controller clean-webhook-server clean-cri-client clean-operator
+# All targets.
+.PHONY: help lint test build container push addlicense debug debug-local build-local generate clean test-local addlicense-install release build-image
 
-clean-controller:
-	-rm -f build/kubefledged-controller
-	-docker image rm ${CONTROLLER_IMAGE_REPO}:${RELEASE_VERSION}
-	-docker image rm `docker image ls -f dangling=true -q`
+.DEFAULT_GOAL:=build
 
-clean-webhook-server:
-	-rm -f build/kubefledged-webhook-server
-	-docker image rm ${WEBHOOK_SERVER_IMAGE_REPO}:${RELEASE_VERSION}
-	-docker image rm `docker image ls -f dangling=true -q`
+build: build-local  ## Build the release version of envd
 
-clean-cri-client:
-	-docker image rm ${CRI_CLIENT_IMAGE_REPO}:${RELEASE_VERSION}
-	-docker image rm `docker image ls -f dangling=true -q`
+help:  ## Display this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-clean-operator:
-	-docker image rm ${OPERATOR_IMAGE_REPO}:${RELEASE_VERSION}
-	-docker image rm `docker image ls -f dangling=true -q`
+debug: debug-local  ## Build the debug version of envd
 
-controller-image: clean-controller
-	docker buildx build --platform=${TARGET_PLATFORMS} -t ${CONTROLLER_IMAGE_REPO}:${RELEASE_VERSION} \
-	-t ${CONTROLLER_IMAGE_REPO}:latest -f build/Dockerfile.controller ${HTTP_PROXY_CONFIG} ${HTTPS_PROXY_CONFIG} \
-	--build-arg GOLANG_VERSION=${GOLANG_VERSION} --build-arg ALPINE_VERSION=${ALPINE_VERSION} --progress=${PROGRESS} ${BUILD_OUTPUT} .
+# more info about `GOGC` env: https://github.com/golangci/golangci-lint#memory-usage-of-golangci-lint
+lint: $(GOLANGCI_LINT)  ## Lint GO code
+	@$(GOLANGCI_LINT) run
 
-controller-amd64: TARGET_PLATFORMS=linux/amd64
-controller-amd64: install-buildx controller-image
+$(GOLANGCI_LINT):
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin
 
-controller-dev: clean-controller
-	CGO_ENABLED=0 go build -o build/kubefledged-controller -ldflags '-s -w -extldflags "-static"' cmd/controller/main.go && \
-	docker build -t ${CONTROLLER_IMAGE_REPO}:${RELEASE_VERSION} -f build/Dockerfile.controller_dev \
-	--build-arg ALPINE_VERSION=${ALPINE_VERSION} .
-	docker push ${CONTROLLER_IMAGE_REPO}:${RELEASE_VERSION}
+mockgen-install:
+	go install github.com/golang/mock/mockgen@v1.6.0
 
-webhook-server-image: clean-webhook-server
-	docker buildx build --platform=${TARGET_PLATFORMS} -t ${WEBHOOK_SERVER_IMAGE_REPO}:${RELEASE_VERSION} \
-	-t ${WEBHOOK_SERVER_IMAGE_REPO}:latest -f build/Dockerfile.webhook_server ${HTTP_PROXY_CONFIG} ${HTTPS_PROXY_CONFIG} \
-	--build-arg GOLANG_VERSION=${GOLANG_VERSION} --build-arg ALPINE_VERSION=${ALPINE_VERSION} --progress=${PROGRESS} ${BUILD_OUTPUT} .
+addlicense-install:
+	go install github.com/google/addlicense@latest
 
-webhook-server-amd64: TARGET_PLATFORMS=linux/amd64
-webhook-server-amd64: install-buildx webhook-server-image
+sqlc-install:
+	go install github.com/kyleconroy/sqlc/cmd/sqlc@latest
 
-webhook-server-dev: clean-webhook-server
-	CGO_ENABLED=0 go build -o build/kubefledged-webhook-server -ldflags '-s -w -extldflags "-static"' cmd/webhook-server/main.go && \
-	docker build -t ${WEBHOOK_SERVER_IMAGE_REPO}:${RELEASE_VERSION} -f build/Dockerfile.webhook_server_dev \
-	--build-arg ALPINE_VERSION=${ALPINE_VERSION} .
-	docker push ${WEBHOOK_SERVER_IMAGE_REPO}:${RELEASE_VERSION}
+# https://github.com/swaggo/swag/pull/1322, we should use master instead of latest for now.
+swag-install:
+	go install github.com/swaggo/swag/cmd/swag@v1.8.7
 
-cri-client-image: clean-cri-client
-	docker buildx build --platform=${TARGET_PLATFORMS} -t ${CRI_CLIENT_IMAGE_REPO}:${RELEASE_VERSION} \
-	-t ${CRI_CLIENT_IMAGE_REPO}:latest -f build/Dockerfile.cri_client ${HTTP_PROXY_CONFIG} ${HTTPS_PROXY_CONFIG} \
-	--build-arg DOCKER_VERSION=${DOCKER_VERSION} --build-arg CRICTL_VERSION=${CRICTL_VERSION} \
-	--build-arg ALPINE_VERSION=${ALPINE_VERSION} --progress=${PROGRESS} ${BUILD_OUTPUT} .
+build-local:
+	@for target in $(TARGETS); do                                                      \
+	  CGO_ENABLED=$(CGO_ENABLED) go build -tags $(DASHBOARD_BUILD)  -trimpath -v -o $(OUTPUT_DIR)/$${target}     \
+	    -ldflags "-s -w -X $(ROOT)/pkg/version.version=$(VERSION) -X $(ROOT)/pkg/version.buildDate=$(BUILD_DATE) -X $(ROOT)/pkg/version.gitCommit=$(GIT_COMMIT) -X $(ROOT)/pkg/version.gitTreeState=$(GIT_TREE_STATE)"                     \
+	    $(CMD_DIR)/$${target};                                                         \
+	done
 
-cri-client-amd64: TARGET_PLATFORMS=linux/amd64
-cri-client-amd64: install-buildx cri-client-image
+# It is used by vscode to attach into the process.
+debug-local:
+	@for target in $(TARGETS); do                                                      \
+	  CGO_ENABLED=$(CGO_ENABLED) go build -tags $(DASHBOARD_BUILD) -trimpath                                    \
+	  	-v -o $(DEBUG_DIR)/$${target}                                                  \
+	  	-gcflags='all=-N -l'                                                           \
+	    $(CMD_DIR)/$${target};                                                         \
+	done
 
-operator-image: clean-operator
-	cd deploy/kubefledged-operator && \
-	docker buildx build --platform=${OPERATOR_TARGET_PLATFORMS} -t ${OPERATOR_IMAGE_REPO}:${RELEASE_VERSION} \
-	-t ${OPERATOR_IMAGE_REPO}:latest -f build/Dockerfile --build-arg OPERATORSDK_VERSION=${OPERATORSDK_VERSION} --progress=${PROGRESS} ${BUILD_OUTPUT} .
+addlicense: addlicense-install  ## Add license to GO code files
+	addlicense -l mpl -c "TensorChord Inc." $$(find . -type f -name '*.go' | grep -v pkg/docs/docs.go)
 
-operator-amd64: TARGET_PLATFORMS=linux/amd64
-operator-amd64: install-buildx operator-image
+test-local:
+	@go test -tags=$(DASHBOARD_BUILD) -v -race -coverprofile=coverage.out ./...
 
-release-amd64: TARGET_PLATFORMS=linux/amd64
-release-amd64: release
+test:  ## Run the tests
+	@go test -tags=$(DASHBOARD_BUILD) -race -coverpkg=./pkg/... -coverprofile=coverage.out ./...
+	@go tool cover -func coverage.out | tail -n 1 | awk '{ print "Total coverage: " $$3 }'
 
-release: install-buildx controller-image webhook-server-image cri-client-image operator-image
+clean:  ## Clean the outputs and artifacts
+	@-rm -vrf ${OUTPUT_DIR}
+	@-rm -vrf ${DEBUG_DIR}
+	@-rm -vrf build dist .eggs *.egg-info
 
-install-buildx:
-	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-	-docker buildx rm multibuilder
-	docker buildx create --name multibuilder --driver docker-container --use
-	docker buildx inspect --bootstrap
-	docker buildx ls
+fmt: swag-install ## Run go fmt against code.
+	go fmt ./...
+	swag fmt
 
-test:
-	-rm -f coverage.out
-	bash hack/run-unit-tests.sh
+vet: ## Run go vet against code.
+	go vet ./...
 
-hack:
-	bash hack/update-codegen.sh
-	bash hack/update-gofmt.sh
-	bash hack/verify-codegen.sh
-	bash hack/verify-gofmt.sh
-	bash hack/verify-golint.sh
-	bash hack/verify-govet.sh
+swag: swag-install
+	swag init -g ./cmd/envd-server/main.go --parseDependency --output ./pkg/docs 
 
-deploy-using-yaml:
-	-kubectl apply -f deploy/kubefledged-namespace.yaml
-	kubectl apply -f deploy/kubefledged-crd.yaml
-	kubectl apply -f deploy/kubefledged-serviceaccount-controller.yaml
-	kubectl apply -f deploy/kubefledged-clusterrole-controller.yaml
-	kubectl apply -f deploy/kubefledged-clusterrolebinding-controller.yaml
-	kubectl apply -f deploy/kubefledged-deployment-controller.yaml
-	kubectl rollout status deployment kubefledged-controller -n kube-fledged --watch
-	-kubectl delete validatingwebhookconfigurations -l app=kubefledged
-	kubectl apply -f deploy/kubefledged-validatingwebhook.yaml
-	-kubectl delete deploy -l app=kubefledged,kubefledged=kubefledged-webhook-server
-	kubectl apply -f deploy/kubefledged-serviceaccount-webhook-server.yaml
-	kubectl apply -f deploy/kubefledged-clusterrole-webhook-server.yaml
-	kubectl apply -f deploy/kubefledged-clusterrolebinding-webhook-server.yaml
-	kubectl apply -f deploy/kubefledged-deployment-webhook-server.yaml
-	kubectl apply -f deploy/kubefledged-service-webhook-server.yaml
-	kubectl rollout status deployment kubefledged-webhook-server -n kube-fledged --watch
-	kubectl get pods -n kube-fledged
+build-image: build-local
+	docker build -t ${BASE_REGISTRY}/${BASE_REGISTRY_USER}/envd-server:dev -f Dockerfile ./bin
+	docker push ${BASE_REGISTRY}/${BASE_REGISTRY_USER}/envd-server:dev
 
-deploy-using-operator:
-	# Create the namespace
-	-kubectl create namespace ${KUBEFLEDGED_NAMESPACE}
-	# Deploy the operator
-	sed -i '' "s|{{KUBEFLEDGED_NAMESPACE}}|${KUBEFLEDGED_NAMESPACE}|g" deploy/kubefledged-operator/deploy/service_account.yaml
-	sed -i '' "s|{{KUBEFLEDGED_NAMESPACE}}|${KUBEFLEDGED_NAMESPACE}|g" deploy/kubefledged-operator/deploy/clusterrole_binding.yaml
-	sed -i '' "s|{{KUBEFLEDGED_NAMESPACE}}|${KUBEFLEDGED_NAMESPACE}|g" deploy/kubefledged-operator/deploy/operator.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_kubefledgeds_crd.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/service_account.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/clusterrole.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/clusterrole_binding.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/operator.yaml
-	# Deploy kube-fledged
-	sed -i '' "s|{{KUBEFLEDGED_NAMESPACE}}|${KUBEFLEDGED_NAMESPACE}|g" deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_v1alpha2_kubefledged_cr.yaml
-	kubectl rollout status deployment kubefledged-operator -n ${KUBEFLEDGED_NAMESPACE} --watch
-	kubectl apply -f deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_v1alpha2_kubefledged_cr.yaml
-	sed -i '' "s|enable: false|enable: true|g" deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_v1alpha2_kubefledged_cr.yaml
-	kubectl apply -f deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_v1alpha2_kubefledged_cr.yaml
-	# Wait for the controller and webhook-server
-	sleep 5
-	kubectl rollout status deployment kube-fledged-controller -n ${KUBEFLEDGED_NAMESPACE} --watch
-	kubectl rollout status deployment kube-fledged-webhook-server -n ${KUBEFLEDGED_NAMESPACE} --watch
-	kubectl get pods -n ${KUBEFLEDGED_NAMESPACE}
+release:
+	@if [ ! -f ".release-env" ]; then \
+		echo "\033[91m.release-env is required for release\033[0m";\
+		exit 1;\
+	fi
+	docker run \
+		--rm \
+		--privileged \
+		-e CGO_ENABLED=1 \
+		--env-file .release-env \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v `pwd`:/go/src/$(PACKAGE_NAME) \
+		-v `pwd`/sysroot:/sysroot \
+		-w /go/src/$(PACKAGE_NAME) \
+		goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		release --rm-dist
 
-update:
-	kubectl scale deployment kubefledged-controller --replicas=0 -n kube-fledged
-	kubectl scale deployment kubefledged-webhook-server --replicas=0 -n kube-fledged && sleep 1
-	kubectl scale deployment kubefledged-controller --replicas=1 -n kube-fledged && sleep 1
-	kubectl scale deployment kubefledged-webhook-server --replicas=1 -n kube-fledged && sleep 1
-	kubectl get pods -l app=kubefledged -n kube-fledged
+tsschema: swag
+	@cd dashboard; pnpm tsschema
 
-remove-kubefledged:
-	-kubectl delete -f deploy/kubefledged-namespace.yaml
-	-kubectl delete clusterrolebinding -l app=kubefledged
-	-kubectl delete clusterrole -l app=kubefledged
-	-kubectl delete crd -l app=kubefledged
-	-kubectl delete validatingwebhookconfigurations -l app=kubefledged
+generate: mockgen-install sqlc-install swag tsschema
+	@mockgen -source pkg/query/querier.go -destination pkg/query/mock/mock.go -package mock
+	@sqlc generate
 
-remove-kubefledged-and-operator:
-	# Remove kubefledged
-	-kubectl delete -f deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_v1alpha2_kubefledged_cr.yaml
-	-kubectl delete validatingwebhookconfigurations -l app.kubernetes.io/name=kube-fledged
-	# Remove the kubefledged operator and the namespace
-	-kubectl delete -f deploy/kubefledged-operator/deploy/operator.yaml
-	-kubectl delete -f deploy/kubefledged-operator/deploy/clusterrole_binding.yaml
-	-kubectl delete -f deploy/kubefledged-operator/deploy/clusterrole.yaml
-	-kubectl delete -f deploy/kubefledged-operator/deploy/service_account.yaml
-	-kubectl delete -f deploy/kubefledged-operator/deploy/crds/charts.helm.kubefledged.io_kubefledgeds_crd.yaml
-	-kubectl delete namespace ${KUBEFLEDGED_NAMESPACE}
-	# Restore manifests
-	-git checkout deploy/kubefledged-operator/deploy/operator.yaml
-	-git checkout deploy/kubefledged-operator/deploy/clusterrole_binding.yaml
-	-git checkout deploy/kubefledged-operator/deploy/service_account.yaml
-
-.PHONY:	e2e-test
-e2e-test:
-	@go test -v ./e2etest
+dashboard-build:
+	@cd dashboard; pnpm build
