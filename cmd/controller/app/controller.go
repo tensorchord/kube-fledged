@@ -57,6 +57,10 @@ const (
 	MessageResourceSynced = "ImageCache synced successfully"
 )
 
+var (
+	defaultNodeLatency = 5 * time.Second
+)
+
 // Controller is the controller for ImageCache resources
 type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
@@ -82,6 +86,9 @@ type Controller struct {
 	// Kubernetes API.
 	recorder                   record.EventRecorder
 	imageCacheRefreshFrequency time.Duration
+
+	// TODO(gaocegege): Should we use concurrent map?
+	nodesCache map[string]bool
 }
 
 // NewController returns a new fledged controller
@@ -114,6 +121,7 @@ func NewController(
 		kubefledgedclientset:       kubefledgedclientset,
 		fledgedNameSpace:           namespace,
 		nodesLister:                nodeInformer.Lister(),
+		nodesCache:                 map[string]bool{},
 		nodesSynced:                nodeInformer.Informer().HasSynced,
 		imageCachesLister:          imageCacheInformer.Lister(),
 		imageCachesSynced:          imageCacheInformer.Informer().HasSynced,
@@ -144,34 +152,90 @@ func NewController(
 	})
 
 	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.handleNodeAddition,
+		AddFunc: func(obj interface{}) {
+			controller.enqueueNode(obj, "add")
+		},
+		UpdateFunc: func(old, new interface{}) {
+			controller.enqueueNode(new, "update")
+		},
+		DeleteFunc: func(obj interface{}) {
+			controller.enqueueNode(obj, "delete")
+		},
 	})
 	return controller
 }
 
-func (c *Controller) handleNodeAddition(obj interface{}) {
-	node, ok := obj.(*corev1.Node)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+func (c *Controller) enqueueNode(obj interface{}, operation string) {
+	switch operation {
+	case "delete":
+		node, ok := obj.(*corev1.Node)
 		if !ok {
-			glog.Errorf("Couldn't get object from tombstone %#v", obj)
-			return
+			tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+			if !ok {
+				glog.Errorf("Couldn't get object from tombstone %#v", obj)
+				return
+			}
+			node, ok = tombstone.Obj.(*corev1.Node)
+			if !ok {
+				glog.Errorf("Tombstone contained object that is not a Node %#v", obj)
+				return
+			}
 		}
-		node, ok = tombstone.Obj.(*corev1.Node)
+		delete(c.nodesCache, node.Name)
+	case "add", "update":
+		node, ok := obj.(*corev1.Node)
 		if !ok {
-			glog.Errorf("Tombstone contained object that is not a Node %#v", obj)
-			return
+			tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+			if !ok {
+				glog.Errorf("Couldn't get object from tombstone %#v", obj)
+				return
+			}
+			node, ok = tombstone.Obj.(*corev1.Node)
+			if !ok {
+				glog.Errorf("Tombstone contained object that is not a Node %#v", obj)
+				return
+			}
+		}
+		if IsNodeReady(node) {
+			if _, ok := c.nodesCache[node.Name]; !ok {
+				c.nodesCache[node.Name] = true
+				glog.V(4).Infof("Node %s updated and ready", node.Name)
+				ics, err := c.imageCachesLister.ImageCaches(c.fledgedNameSpace).List(labels.Everything())
+				if err != nil {
+					glog.Errorf("Error listing ImageCaches: %s", err.Error())
+					return
+				}
+
+				// Wait for defaultNodeLatency before enqueuing ImageCaches to make kubernetes api server happy.
+				ticker := time.NewTicker(defaultNodeLatency)
+				quit := make(chan struct{})
+				go func() {
+					for {
+						select {
+						case <-ticker.C:
+							glog.V(4).Infof("Enqueuing ImageCaches for node %s", node.Name)
+							for _, ic := range ics {
+								c.enqueueImageCache(images.ImageCacheRefresh, ic, ic)
+							}
+							close(quit)
+						case <-quit:
+							ticker.Stop()
+							return
+						}
+					}
+				}()
+			}
 		}
 	}
-	glog.V(4).Infof("Node %s added", node.Name)
-	ics, err := c.imageCachesLister.ImageCaches(c.fledgedNameSpace).List(labels.Everything())
-	if err != nil {
-		glog.Errorf("Error listing ImageCaches: %s", err.Error())
-		return
+}
+
+func IsNodeReady(node *corev1.Node) bool {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeReady {
+			return condition.Status == corev1.ConditionTrue
+		}
 	}
-	for _, ic := range ics {
-		c.enqueueImageCache(images.ImageCacheRefresh, ic, ic)
-	}
+	return false
 }
 
 // PreFlightChecks performs pre-flight checks and actions before the controller is started
