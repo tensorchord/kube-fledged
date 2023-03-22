@@ -1,25 +1,37 @@
-name: goreleaser
+name: release
 
-# Run the go-releaser on creation of a new tag
 on:
   push:
     tags:
-      - '*'
+      - 'v*'
+  pull_request:
+    paths:
+    - '.github/workflows/release.yml'
+    - '.goreleaser/'
+    - '.goreleaser.yaml'
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      -
-        name: Set up Go
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Set up Go
         uses: actions/setup-go@v3
-      -
-        name: Run GoReleaser
+        with:
+          go-version: 1.19
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERIO_USERNAME }}
+          password: ${{ secrets.DOCKERIO_TOKEN }}     
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
           distribution: goreleaser
