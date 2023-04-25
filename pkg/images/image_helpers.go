@@ -59,78 +59,131 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string, node 
 	backoffLimit := int32(0)
 	activeDeadlineSeconds := int64((time.Hour).Seconds())
 
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: imagecache.Name + "-",
-			Namespace:    imagecache.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-					Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-					Version: fledgedv1alpha2.SchemeGroupVersion.Version,
-					Kind:    "ImageCache",
-				}),
-			},
-			Labels: labels,
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:          &backoffLimit,
-			ActiveDeadlineSeconds: &activeDeadlineSeconds,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: imagecache.Namespace,
-					Labels:    labels,
+	var job *batchv1.Job
+	if strings.Contains(image, "modelzai") {
+		job = &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: imagecache.Name + "-",
+				Namespace:    imagecache.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
+						Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
+						Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+						Kind:    "ImageCache",
+					}),
 				},
-				Spec: corev1.PodSpec{
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": hostname,
+				Labels: labels,
+			},
+			Spec: batchv1.JobSpec{
+				BackoffLimit:          &backoffLimit,
+				ActiveDeadlineSeconds: &activeDeadlineSeconds,
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: imagecache.Namespace,
+						Labels:    labels,
 					},
-					InitContainers: []corev1.Container{
-						{
-							Name:    "busybox",
-							Image:   busyboxImage,
-							Command: []string{"cp", "/bin/echo", "/tmp/bin"},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "tmp-bin",
-									MountPath: "/tmp/bin",
+					Spec: corev1.PodSpec{
+						NodeSelector: map[string]string{
+							"kubernetes.io/hostname": hostname,
+						},
+						Containers: []corev1.Container{
+							{
+								Name:  "imagepuller",
+								Image: image,
+								Command: []string{
+									"bash",
+									"-c",
+									"find /opt/conda/bin/ /opt/conda/lib/ -type f -print0 | xargs -0 cat > /dev/null",
 								},
-							},
-							ImagePullPolicy: corev1.PullIfNotPresent,
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:    "imagepuller",
-							Image:   image,
-							Command: []string{"/tmp/bin/echo", "Image pulled successfully!"},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "tmp-bin",
-									MountPath: "/tmp/bin",
-								},
-							},
-							ImagePullPolicy: pullPolicy,
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "tmp-bin",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
+								ImagePullPolicy: pullPolicy,
 							},
 						},
-					},
-					RestartPolicy:    corev1.RestartPolicyNever,
-					ImagePullSecrets: imagecache.Spec.ImagePullSecrets,
-					Tolerations: []corev1.Toleration{
-						{
-							Operator: corev1.TolerationOpExists,
+						RestartPolicy:    corev1.RestartPolicyNever,
+						ImagePullSecrets: imagecache.Spec.ImagePullSecrets,
+						Tolerations: []corev1.Toleration{
+							{
+								Operator: corev1.TolerationOpExists,
+							},
 						},
 					},
 				},
 			},
-		},
+		}
+	} else {
+		job = &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: imagecache.Name + "-",
+				Namespace:    imagecache.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
+						Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
+						Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+						Kind:    "ImageCache",
+					}),
+				},
+				Labels: labels,
+			},
+			Spec: batchv1.JobSpec{
+				BackoffLimit:          &backoffLimit,
+				ActiveDeadlineSeconds: &activeDeadlineSeconds,
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: imagecache.Namespace,
+						Labels:    labels,
+					},
+					Spec: corev1.PodSpec{
+						NodeSelector: map[string]string{
+							"kubernetes.io/hostname": hostname,
+						},
+						InitContainers: []corev1.Container{
+							{
+								Name:    "busybox",
+								Image:   busyboxImage,
+								Command: []string{"cp", "/bin/echo", "/tmp/bin"},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "tmp-bin",
+										MountPath: "/tmp/bin",
+									},
+								},
+								ImagePullPolicy: corev1.PullIfNotPresent,
+							},
+						},
+						Containers: []corev1.Container{
+							{
+								Name:    "imagepuller",
+								Image:   image,
+								Command: []string{"/tmp/bin/echo", "Image pulled successfully!"},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "tmp-bin",
+										MountPath: "/tmp/bin",
+									},
+								},
+								ImagePullPolicy: pullPolicy,
+							},
+						},
+						Volumes: []corev1.Volume{
+							{
+								Name: "tmp-bin",
+								VolumeSource: corev1.VolumeSource{
+									EmptyDir: &corev1.EmptyDirVolumeSource{},
+								},
+							},
+						},
+						RestartPolicy:    corev1.RestartPolicyNever,
+						ImagePullSecrets: imagecache.Spec.ImagePullSecrets,
+						Tolerations: []corev1.Toleration{
+							{
+								Operator: corev1.TolerationOpExists,
+							},
+						},
+					},
+				},
+			},
+		}
 	}
+
 	if serviceAccountName != "" {
 		job.Spec.Template.Spec.ServiceAccountName = serviceAccountName
 	}
