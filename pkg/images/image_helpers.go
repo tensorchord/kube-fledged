@@ -93,7 +93,7 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string, node 
 								Command: []string{
 									"bash",
 									"-c",
-									"find /opt/conda/bin/ /opt/conda/lib/ -type f -print0 | xargs -0 cat > /dev/null",
+									"find /opt/conda/bin/ /opt/conda/lib/ -type f -print0 | xargs -0 cat > /dev/null || true",
 								},
 								ImagePullPolicy: pullPolicy,
 							},
