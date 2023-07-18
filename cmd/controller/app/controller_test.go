@@ -67,6 +67,7 @@ func newTestController(kubeclientset kubernetes.Interface, fledgedclientset clie
 	imageDeleteJobHostNetwork := false
 	jobPriorityClassName := "priority-class-kube-fledged"
 	canDelete := false
+	forceCacheAllEvenLazy := false
 	socketPath := ""
 
 	/* 	startInformers := true
@@ -81,7 +82,7 @@ func newTestController(kubeclientset kubernetes.Interface, fledgedclientset clie
 		fledgedclientset, fledgedNameSpace, nodeInformer, imagecacheInformer,
 		imageCacheRefreshFrequency, imagePullDeadlineDuration, criClientImage,
 		busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
-		jobPriorityClassName, canDelete, socketPath)
+		jobPriorityClassName, canDelete, forceCacheAllEvenLazy, socketPath)
 	controller.nodesSynced = func() bool { return true }
 	controller.imageCachesSynced = func() bool { return true }
 	return controller, nodeInformer, imagecacheInformer
