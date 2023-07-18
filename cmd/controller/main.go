@@ -48,8 +48,9 @@ var (
 	kubeconfig                 string
 	masterURL                  string
 	//Default value for when `--job-retention-policy` flag is not set
-	canDeleteJob  bool = true
-	criSocketPath string
+	canDeleteJob          bool = true
+	criSocketPath         string
+	forceCacheAllEvenLazy bool = false
 )
 
 func main() {
@@ -81,7 +82,7 @@ func main() {
 		fledgedInformerFactory.Kubefledged().V1alpha2().ImageCaches(),
 		imageCacheRefreshFrequency, imagePullDeadlineDuration, criClientImage,
 		busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
-		jobPriorityClassName, canDeleteJob, criSocketPath)
+		jobPriorityClassName, canDeleteJob, forceCacheAllEvenLazy, criSocketPath)
 
 	glog.Info("Starting pre-flight checks")
 	if err = controller.PreFlightChecks(); err != nil {

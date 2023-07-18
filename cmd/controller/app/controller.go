@@ -107,6 +107,7 @@ func NewController(
 	imageDeleteJobHostNetwork bool,
 	jobPriorityClassName string,
 	canDeleteJob bool,
+	forceCacheAllEvenLazy bool,
 	criSocketPath string) *Controller {
 
 	runtime.Must(fledgedscheme.AddToScheme(scheme.Scheme))
@@ -134,7 +135,7 @@ func NewController(
 	imageManager, _ := images.NewImageManager(controller.workqueue, controller.imageworkqueue,
 		controller.kubeclientset, controller.fledgedNameSpace, imagePullDeadlineDuration,
 		criClientImage, busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
-		jobPriorityClassName, canDeleteJob, criSocketPath)
+		jobPriorityClassName, canDeleteJob, forceCacheAllEvenLazy, criSocketPath)
 	controller.imageManager = imageManager
 
 	glog.Info("Setting up event handlers")
@@ -229,6 +230,7 @@ func (c *Controller) enqueueNode(obj interface{}, operation string) {
 	}
 }
 
+// IsNodeReady checks whether the Node is ready
 func IsNodeReady(node *corev1.Node) bool {
 	for _, condition := range node.Status.Conditions {
 		if condition.Type == corev1.NodeReady {

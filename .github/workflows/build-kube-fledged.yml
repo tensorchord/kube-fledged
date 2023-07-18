@@ -1,0 +1,32 @@
+name: Test kube-fledged
+
+on:   
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+
+jobs:
+  build_kube_fledged:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+
+    - name: Install dependencies
+      run: |
+        go install golang.org/x/lint/golint@latest
+
+    - name: Run verify scripts
+      run: |
+        hack/verify-gofmt.sh
+        hack/verify-golint.sh
+        hack/verify-govet.sh
+
+    - name: Run unit tests
+      run: hack/run-unit-tests.sh
