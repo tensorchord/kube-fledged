@@ -46,8 +46,7 @@ var node = corev1.Node{
 
 func newTestImageManager(kubeclientset kubernetes.Interface, imagepullpolicy string,
 	serviceaccountname string, imagedeletejobhostnetwork bool,
-	jobpriorityclassname string, candeletejob bool, forceCacheAllEvenLazy bool,
-	criSocketPath string) (*ImageManager, coreinformers.PodInformer) {
+	jobpriorityclassname string, candeletejob bool, criSocketPath string) (*ImageManager, coreinformers.PodInformer) {
 	imagePullDeadlineDuration := time.Millisecond * 10
 	criClientImage := "senthilrch/fledged-docker-client:latest"
 	busyboxImage := "senthilrch/busybox:1.35.0"
@@ -62,8 +61,7 @@ func newTestImageManager(kubeclientset kubernetes.Interface, imagepullpolicy str
 
 	imagemanager, podInformer := NewImageManager(imagecacheworkqueue, imageworkqueue, kubeclientset,
 		fledgedNameSpace, imagePullDeadlineDuration, criClientImage, busyboxImage, imagePullPolicy,
-		serviceAccountName, imageDeleteJobHostNetwork, jobPriorityClassName, canDeleteJob,
-		forceCacheAllEvenLazy, socketPath)
+		serviceAccountName, imageDeleteJobHostNetwork, jobPriorityClassName, canDeleteJob, socketPath)
 	imagemanager.podsSynced = func() bool { return true }
 
 	return imagemanager, podInformer
@@ -216,7 +214,7 @@ func TestPullDeleteImage(t *testing.T) {
 		}
 
 		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
-			"priority-class-kube-fledged", false, false, "")
+			"priority-class-kube-fledged", false, "")
 		var err error
 		if test.action == "pullimage" {
 			_, err = imagemanager.pullImage(test.iwr)
@@ -315,7 +313,7 @@ func TestHandlePodStatusChange(t *testing.T) {
 	for _, test := range tests {
 		fakekubeclientset := &fakeclientset.Clientset{}
 		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
-			"priority-class-kube-fledged", false, false, "")
+			"priority-class-kube-fledged", false, "")
 		imagemanager.imageworkstatus[test.pod.Labels["job-name"]] = ImageWorkResult{
 			Status: ImageWorkResultStatusJobCreated,
 			ImageWorkRequest: ImageWorkRequest{
@@ -629,7 +627,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 			})
 		}
 		imagemanager, podInformer := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
-			"priority-class-kube-fledged", false, false, "")
+			"priority-class-kube-fledged", false, "")
 		for _, pod := range test.pods {
 			if !reflect.DeepEqual(pod, corev1.Pod{}) {
 				podInformer.Informer().GetIndexer().Add(&pod)
@@ -909,7 +907,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 	for _, test := range tests {
 		fakekubeclientset := &fakeclientset.Clientset{}
 		imagemanager, podInformer := newTestImageManager(fakekubeclientset, test.imagepullpolicy, "sa-kube-fledged", false,
-			"priority-class-kube-fledged", false, false, "")
+			"priority-class-kube-fledged", false, "")
 		for _, pod := range test.pods {
 			if !reflect.DeepEqual(pod, corev1.Pod{}) {
 				podInformer.Informer().GetIndexer().Add(&pod)

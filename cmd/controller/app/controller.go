@@ -107,7 +107,6 @@ func NewController(
 	imageDeleteJobHostNetwork bool,
 	jobPriorityClassName string,
 	canDeleteJob bool,
-	forceCacheAllEvenLazy bool,
 	criSocketPath string) *Controller {
 
 	runtime.Must(fledgedscheme.AddToScheme(scheme.Scheme))
@@ -135,7 +134,7 @@ func NewController(
 	imageManager, _ := images.NewImageManager(controller.workqueue, controller.imageworkqueue,
 		controller.kubeclientset, controller.fledgedNameSpace, imagePullDeadlineDuration,
 		criClientImage, busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
-		jobPriorityClassName, canDeleteJob, forceCacheAllEvenLazy, criSocketPath)
+		jobPriorityClassName, canDeleteJob, criSocketPath)
 	controller.imageManager = imageManager
 
 	glog.Info("Setting up event handlers")
@@ -622,6 +621,7 @@ func (c *Controller) syncHandler(wqKey images.WorkQueueKey) error {
 				for m := range i.Images {
 					ipr := images.ImageWorkRequest{
 						Image:                   i.Images[m],
+						ForceCacheAll:           i.ForceCacheAll[m],
 						Node:                    n,
 						ContainerRuntimeVersion: n.Status.NodeInfo.ContainerRuntimeVersion,
 						WorkType:                wqKey.WorkType,
@@ -630,7 +630,7 @@ func (c *Controller) syncHandler(wqKey images.WorkQueueKey) error {
 					c.imageworkqueue.AddRateLimited(ipr)
 				}
 				if wqKey.WorkType == images.ImageCacheUpdate {
-					for _, oldimage := range wqKey.OldImageCache.Spec.CacheSpec[k].Images {
+					for imageIndex, oldimage := range wqKey.OldImageCache.Spec.CacheSpec[k].Images {
 						matched := false
 						for _, newimage := range i.Images {
 							if oldimage == newimage {
@@ -641,6 +641,7 @@ func (c *Controller) syncHandler(wqKey images.WorkQueueKey) error {
 						if !matched {
 							ipr := images.ImageWorkRequest{
 								Image:                   oldimage,
+								ForceCacheAll:           wqKey.OldImageCache.Spec.CacheSpec[k].ForceCacheAll[imageIndex],
 								Node:                    n,
 								ContainerRuntimeVersion: n.Status.NodeInfo.ContainerRuntimeVersion,
 								WorkType:                images.ImageCachePurge,

@@ -34,6 +34,11 @@ func (in *CacheSpecImages) DeepCopyInto(out *CacheSpecImages) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.ForceCacheAll != nil {
+		in, out := &in.ForceCacheAll, &out.ForceCacheAll
+		*out = make([]bool, len(*in))
+		copy(*out, *in)
+	}
 	if in.NodeSelector != nil {
 		in, out := &in.NodeSelector, &out.NodeSelector
 		*out = make(map[string]string, len(*in))

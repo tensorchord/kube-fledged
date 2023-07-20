@@ -38,8 +38,9 @@ type ImageCache struct {
 
 // CacheSpecImages specifies the Images to be cached
 type CacheSpecImages struct {
-	Images       []string          `json:"images"`
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	Images        []string          `json:"images"`
+	ForceCacheAll []bool            `json:"forceCacheAll"`
+	NodeSelector  map[string]string `json:"nodeSelector,omitempty"`
 }
 
 // ImageCacheSpec is the spec for a ImageCache resource

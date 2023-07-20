@@ -67,7 +67,6 @@ func newTestController(kubeclientset kubernetes.Interface, fledgedclientset clie
 	imageDeleteJobHostNetwork := false
 	jobPriorityClassName := "priority-class-kube-fledged"
 	canDelete := false
-	forceCacheAllEvenLazy := false
 	socketPath := ""
 
 	/* 	startInformers := true
@@ -82,7 +81,7 @@ func newTestController(kubeclientset kubernetes.Interface, fledgedclientset clie
 		fledgedclientset, fledgedNameSpace, nodeInformer, imagecacheInformer,
 		imageCacheRefreshFrequency, imagePullDeadlineDuration, criClientImage,
 		busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
-		jobPriorityClassName, canDelete, forceCacheAllEvenLazy, socketPath)
+		jobPriorityClassName, canDelete, socketPath)
 	controller.nodesSynced = func() bool { return true }
 	controller.imageCachesSynced = func() bool { return true }
 	return controller, nodeInformer, imagecacheInformer
@@ -453,7 +452,8 @@ func TestSyncHandler(t *testing.T) {
 		Spec: kubefledgedv1alpha2.ImageCacheSpec{
 			CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 				{
-					Images: []string{"foo"},
+					Images:        []string{"foo"},
+					ForceCacheAll: []bool{false},
 				},
 			},
 		},
@@ -601,7 +601,8 @@ func TestSyncHandler(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -656,7 +657,8 @@ func TestSyncHandler(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -705,7 +707,8 @@ func TestSyncHandler(t *testing.T) {
 					Spec: kubefledgedv1alpha2.ImageCacheSpec{
 						CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 							{
-								Images: []string{"foo", "bar"},
+								Images:        []string{"foo", "bar"},
+								ForceCacheAll: []bool{true, false},
 							},
 						},
 					},
@@ -729,7 +732,8 @@ func TestSyncHandler(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -767,7 +771,8 @@ func TestSyncHandler(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -893,7 +898,8 @@ func TestEnqueueImageCache(t *testing.T) {
 		Spec: kubefledgedv1alpha2.ImageCacheSpec{
 			CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 				{
-					Images: []string{"foo"},
+					Images:        []string{"foo"},
+					ForceCacheAll: []bool{true},
 				},
 			},
 		},
@@ -922,7 +928,8 @@ func TestEnqueueImageCache(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -945,7 +952,8 @@ func TestEnqueueImageCache(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -973,7 +981,8 @@ func TestEnqueueImageCache(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -995,7 +1004,8 @@ func TestEnqueueImageCache(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo", "bar"},
+							Images:        []string{"foo", "bar"},
+							ForceCacheAll: []bool{true, false},
 						},
 					},
 				},
@@ -1050,7 +1060,8 @@ func TestEnqueueImageCache(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{"foo"},
+							Images:        []string{"foo"},
+							ForceCacheAll: []bool{true},
 						},
 					},
 				},
@@ -1086,7 +1097,8 @@ func TestProcessNextWorkItem(t *testing.T) {
 		Spec: kubefledgedv1alpha2.ImageCacheSpec{
 			CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 				{
-					Images: []string{"foo"},
+					Images:        []string{"foo"},
+					ForceCacheAll: []bool{true},
 				},
 			},
 		},
@@ -1133,7 +1145,8 @@ func TestProcessNextWorkItem(t *testing.T) {
 				Spec: kubefledgedv1alpha2.ImageCacheSpec{
 					CacheSpec: []kubefledgedv1alpha2.CacheSpecImages{
 						{
-							Images: []string{},
+							Images:        []string{},
+							ForceCacheAll: []bool{},
 						},
 					},
 				},

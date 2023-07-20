@@ -76,7 +76,6 @@ type ImageManager struct {
 	imageDeleteJobHostNetwork bool
 	jobPriorityClassName      string
 	canDeleteJob              bool
-	forceCacheAllEvenLazy     bool
 	criSocketPath             string
 	lock                      sync.RWMutex
 }
@@ -84,6 +83,7 @@ type ImageManager struct {
 // ImageWorkRequest has image name, node name, work type and imagecache
 type ImageWorkRequest struct {
 	Image                   string
+	ForceCacheAll           bool
 	Node                    *corev1.Node
 	ContainerRuntimeVersion string
 	WorkType                WorkType
@@ -130,7 +130,6 @@ func NewImageManager(
 	imageDeleteJobHostNetwork bool,
 	jobPriorityClassName string,
 	canDeleteJob bool,
-	forceCacheAllEvenLazy bool,
 	criSocketPath string) (*ImageManager, coreinformers.PodInformer) {
 
 	appEqKubefledged, _ := labels.NewRequirement("app", selection.Equals, []string{"kubefledged"})
@@ -163,7 +162,6 @@ func NewImageManager(
 		imageDeleteJobHostNetwork: imageDeleteJobHostNetwork,
 		jobPriorityClassName:      jobPriorityClassName,
 		canDeleteJob:              canDeleteJob,
-		forceCacheAllEvenLazy:     forceCacheAllEvenLazy,
 		criSocketPath:             criSocketPath,
 	}
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -502,8 +500,8 @@ func (m *ImageManager) processNextWorkItem() bool {
 // pullImage pulls the image to the node
 func (m *ImageManager) pullImage(iwr ImageWorkRequest) (*batchv1.Job, error) {
 	// Construct the Job manifest
-	newjob, err := newImagePullJob(iwr.Imagecache, iwr.Image, iwr.Node, m.imagePullPolicy,
-		m.busyboxImage, m.serviceAccountName, m.jobPriorityClassName, m.forceCacheAllEvenLazy)
+	newjob, err := newImagePullJob(iwr.Imagecache, iwr.Image, iwr.ForceCacheAll, iwr.Node, m.imagePullPolicy,
+		m.busyboxImage, m.serviceAccountName, m.jobPriorityClassName)
 	if err != nil {
 		glog.Errorf("Error when constructing job manifest: %v", err)
 		return nil, err

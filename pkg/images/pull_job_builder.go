@@ -134,7 +134,12 @@ func dirCacheJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolic
 							Command: []string{
 								"bash",
 								"-c",
-								fmt.Sprintf("find %s -type f -print0 | xargs -0 cat > /dev/null || true",
+								fmt.Sprintf("find %s "+
+									"-prune -o -path \"/dev/*\" "+
+									"-prune -o -path \"/proc/*\" "+
+									"-prune -o -path \"/sys/*\" "+
+									"-prune -o -path \"/mnt/*\" "+
+									"-type f -print0 | xargs -0 cat > /dev/null || true",
 									strings.Join(cacheDir, " ")),
 							},
 							ImagePullPolicy: pullPolicy,
