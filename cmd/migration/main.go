@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
-	"github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	"github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	clientset "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,36 +47,39 @@ func main() {
 	}
 
 	for _, o := range old.Items {
-		spec := []v1alpha2.CacheSpecImages{}
+		spec := []v1alpha3.CacheSpecImages{}
+
 		for _, s := range o.Spec.CacheSpec {
-			ForceCacheAll := make([]bool, len(s.Images))
-			for i := range ForceCacheAll {
-				ForceCacheAll[i] = enableFullCache
+			images := []v1alpha3.Image{}
+			for _, image := range s.Images {
+				images = append(images, v1alpha3.Image{
+					Name:           image,
+					ForceFullCache: enableFullCache,
+				})
 			}
-			spec = append(spec, v1alpha2.CacheSpecImages{
-				Images:        s.Images,
-				ForceCacheAll: ForceCacheAll,
-				NodeSelector:  s.NodeSelector,
+			spec = append(spec, v1alpha3.CacheSpecImages{
+				Images:       images,
+				NodeSelector: s.NodeSelector,
 			})
 		}
 		logrus.Info("Migrating Inference: ", o.Name, o.Namespace)
-		Failures := map[string]v1alpha2.NodeReasonMessageList{}
+		Failures := map[string]v1alpha3.NodeReasonMessageList{}
 		for k, messageList := range o.Status.Failures {
-			l := []v1alpha2.NodeReasonMessage{}
+			l := []v1alpha3.NodeReasonMessage{}
 			for _, v := range messageList {
-				l = append(l, v1alpha2.NodeReasonMessage(v))
+				l = append(l, v1alpha3.NodeReasonMessage(v))
 			}
 			Failures[k] = l
 		}
-		new := &v1alpha2.ImageCache{
+		new := &v1alpha3.ImageCache{
 			TypeMeta:   o.TypeMeta,
 			ObjectMeta: o.ObjectMeta,
-			Spec: v1alpha2.ImageCacheSpec{
+			Spec: v1alpha3.ImageCacheSpec{
 				CacheSpec:        spec,
 				ImagePullSecrets: o.Spec.ImagePullSecrets,
 			},
-			Status: v1alpha2.ImageCacheStatus{
-				Status:         v1alpha2.ImageCacheActionStatus(o.Status.Status),
+			Status: v1alpha3.ImageCacheStatus{
+				Status:         v1alpha3.ImageCacheActionStatus(o.Status.Status),
 				Reason:         o.Status.Reason,
 				Message:        o.Status.Message,
 				Failures:       Failures,
@@ -84,14 +87,13 @@ func main() {
 				CompletionTime: o.Status.CompletionTime,
 			},
 		}
-
-		_, err = client.KubefledgedV1alpha2().ImageCaches(o.Namespace).Update(context.TODO(), new, metav1.UpdateOptions{})
+		_, err = client.KubefledgedV1alpha3().ImageCaches(o.Namespace).Update(context.TODO(), new, metav1.UpdateOptions{})
 		if err != nil {
 			glog.Fatalf("error creating Inference: %s", err.Error())
 		}
 	}
 
-	new, err := client.KubefledgedV1alpha2().ImageCaches("").List(context.TODO(), metav1.ListOptions{})
+	new, err := client.KubefledgedV1alpha3().ImageCaches("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		glog.Fatalf("error listing Inferences: %s", err.Error())
 	}

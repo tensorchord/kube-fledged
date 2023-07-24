@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	fledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	fledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,8 +31,8 @@ import (
 )
 
 // newImagePullJob constructs a job manifest for pulling an image to a node
-func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string,
-	forceCacheAll bool, node *corev1.Node, imagePullPolicy string,
+func newImagePullJob(imagecache *fledgedv1alpha3.ImageCache, image string,
+	forceFullCache bool, node *corev1.Node, imagePullPolicy string,
 	busyboxImage string, serviceAccountName string, jobPriorityClassName string) (*batchv1.Job, error) {
 	var pullPolicy corev1.PullPolicy = corev1.PullIfNotPresent
 	hostname := node.Labels["kubernetes.io/hostname"]
@@ -57,7 +57,7 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string,
 	}
 
 	var job *batchv1.Job
-	if forceCacheAll {
+	if forceFullCache {
 		job = fullCacheJob(imagecache, image, pullPolicy, hostname, labels)
 	} else if strings.Contains(image, "modelzai") {
 		job = dirCacheJob(imagecache, image, pullPolicy, hostname, labels, []string{
@@ -77,7 +77,7 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string,
 }
 
 // newImageDeleteJob constructs a job manifest to delete an image from a node
-func newImageDeleteJob(imagecache *fledgedv1alpha2.ImageCache, image string, node *corev1.Node,
+func newImageDeleteJob(imagecache *fledgedv1alpha3.ImageCache, image string, node *corev1.Node,
 	containerRuntimeVersion string, dockerclientimage string, serviceAccountName string,
 	imageDeleteJobHostNetwork bool, jobPriorityClassName string, criSocketPath string) (*batchv1.Job, error) {
 	hostname := node.Labels["kubernetes.io/hostname"]
@@ -104,8 +104,8 @@ func newImageDeleteJob(imagecache *fledgedv1alpha2.ImageCache, image string, nod
 			Namespace:    imagecache.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-					Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-					Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+					Group:   fledgedv1alpha3.SchemeGroupVersion.Group,
+					Version: fledgedv1alpha3.SchemeGroupVersion.Version,
 					Kind:    "ImageCache",
 				}),
 			},

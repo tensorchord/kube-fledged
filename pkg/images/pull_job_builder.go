@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	fledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	fledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,7 +17,7 @@ import (
 )
 
 // common Job will cache all at default status, but none at streaming mode of GCP
-func commonJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolicy corev1.PullPolicy,
+func commonJob(imagecache *fledgedv1alpha3.ImageCache, image string, pullPolicy corev1.PullPolicy,
 	hostname string, labels map[string]string, busyboxImage string) *batchv1.Job {
 	backoffLimit := int32(0)
 	activeDeadlineSeconds := int64((time.Hour).Seconds())
@@ -28,8 +28,8 @@ func commonJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolicy 
 			Namespace:    imagecache.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-					Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-					Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+					Group:   fledgedv1alpha3.SchemeGroupVersion.Group,
+					Version: fledgedv1alpha3.SchemeGroupVersion.Version,
 					Kind:    "ImageCache",
 				}),
 			},
@@ -97,7 +97,7 @@ func commonJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolicy 
 }
 
 // special Job to cache common used files and directories at streaming mode of GCP
-func dirCacheJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolicy corev1.PullPolicy,
+func dirCacheJob(imagecache *fledgedv1alpha3.ImageCache, image string, pullPolicy corev1.PullPolicy,
 	hostname string, labels map[string]string, cacheDir []string) *batchv1.Job {
 	backoffLimit := int32(0)
 	activeDeadlineSeconds := int64((time.Hour).Seconds())
@@ -108,8 +108,8 @@ func dirCacheJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolic
 			Namespace:    imagecache.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-					Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-					Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+					Group:   fledgedv1alpha3.SchemeGroupVersion.Group,
+					Version: fledgedv1alpha3.SchemeGroupVersion.Version,
 					Kind:    "ImageCache",
 				}),
 			},
@@ -159,7 +159,7 @@ func dirCacheJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolic
 }
 
 // special Job to cache all files used at streaming mode of GCP
-func fullCacheJob(imagecache *fledgedv1alpha2.ImageCache, image string, pullPolicy corev1.PullPolicy,
+func fullCacheJob(imagecache *fledgedv1alpha3.ImageCache, image string, pullPolicy corev1.PullPolicy,
 	hostname string, labels map[string]string) *batchv1.Job {
 	return dirCacheJob(imagecache, image, pullPolicy, hostname, labels, []string{"/"})
 }

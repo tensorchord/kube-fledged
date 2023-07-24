@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha2
+package v1alpha3
 
 import (
 	corev1 "k8s.io/api/core/v1"
@@ -36,9 +36,15 @@ type ImageCache struct {
 	Status ImageCacheStatus `json:"status,omitempty"`
 }
 
+// Image specifies the image to be cached
+type Image struct {
+	Name           string `json:"name"`
+	ForceFullCache bool   `json:"forceFullCache"`
+}
+
 // CacheSpecImages specifies the Images to be cached
 type CacheSpecImages struct {
-	Images       []string          `json:"images"`
+	Images       []Image           `json:"images"`
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 }
 

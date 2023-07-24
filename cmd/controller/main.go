@@ -78,7 +78,7 @@ func main() {
 
 	controller := app.NewController(kubeClient, fledgedClient, fledgedNameSpace,
 		kubeInformerFactory.Core().V1().Nodes(),
-		fledgedInformerFactory.Kubefledged().V1alpha2().ImageCaches(),
+		fledgedInformerFactory.Kubefledged().V1alpha3().ImageCaches(),
 		imageCacheRefreshFrequency, imagePullDeadlineDuration, criClientImage,
 		busyboxImage, imagePullPolicy, serviceAccountName, imageDeleteJobHostNetwork,
 		jobPriorityClassName, canDeleteJob, criSocketPath)
