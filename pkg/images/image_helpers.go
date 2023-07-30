@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	fledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	fledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,9 +31,9 @@ import (
 )
 
 // newImagePullJob constructs a job manifest for pulling an image to a node
-func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string, node *corev1.Node,
-	imagePullPolicy string, busyboxImage string, serviceAccountName string,
-	jobPriorityClassName string) (*batchv1.Job, error) {
+func newImagePullJob(imagecache *fledgedv1alpha3.ImageCache, image string,
+	forceFullCache bool, node *corev1.Node, imagePullPolicy string,
+	busyboxImage string, serviceAccountName string, jobPriorityClassName string) (*batchv1.Job, error) {
 	var pullPolicy corev1.PullPolicy = corev1.PullIfNotPresent
 	hostname := node.Labels["kubernetes.io/hostname"]
 	if imagecache == nil {
@@ -56,132 +56,15 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string, node 
 		"controller":  controllerAgentName,
 	}
 
-	backoffLimit := int32(0)
-	activeDeadlineSeconds := int64((time.Hour).Seconds())
-
 	var job *batchv1.Job
-	if strings.Contains(image, "modelzai") {
-		job = &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: imagecache.Name + "-",
-				Namespace:    imagecache.Namespace,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-						Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-						Version: fledgedv1alpha2.SchemeGroupVersion.Version,
-						Kind:    "ImageCache",
-					}),
-				},
-				Labels: labels,
-			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit:          &backoffLimit,
-				ActiveDeadlineSeconds: &activeDeadlineSeconds,
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: imagecache.Namespace,
-						Labels:    labels,
-					},
-					Spec: corev1.PodSpec{
-						NodeSelector: map[string]string{
-							"kubernetes.io/hostname": hostname,
-						},
-						Containers: []corev1.Container{
-							{
-								Name:  "imagepuller",
-								Image: image,
-								Command: []string{
-									"bash",
-									"-c",
-									"find /opt/conda/bin/ /opt/conda/lib/ -type f -print0 | xargs -0 cat > /dev/null || true",
-								},
-								ImagePullPolicy: pullPolicy,
-							},
-						},
-						RestartPolicy:    corev1.RestartPolicyNever,
-						ImagePullSecrets: imagecache.Spec.ImagePullSecrets,
-						Tolerations: []corev1.Toleration{
-							{
-								Operator: corev1.TolerationOpExists,
-							},
-						},
-					},
-				},
-			},
-		}
+	if forceFullCache {
+		job = fullCacheJob(imagecache, image, pullPolicy, hostname, labels)
+	} else if strings.Contains(image, "modelzai") {
+		job = dirCacheJob(imagecache, image, pullPolicy, hostname, labels, []string{
+			"/opt/conda/bin/", "/opt/conda/lib/",
+		})
 	} else {
-		job = &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: imagecache.Name + "-",
-				Namespace:    imagecache.Namespace,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-						Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-						Version: fledgedv1alpha2.SchemeGroupVersion.Version,
-						Kind:    "ImageCache",
-					}),
-				},
-				Labels: labels,
-			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit:          &backoffLimit,
-				ActiveDeadlineSeconds: &activeDeadlineSeconds,
-				Template: corev1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: imagecache.Namespace,
-						Labels:    labels,
-					},
-					Spec: corev1.PodSpec{
-						NodeSelector: map[string]string{
-							"kubernetes.io/hostname": hostname,
-						},
-						InitContainers: []corev1.Container{
-							{
-								Name:    "busybox",
-								Image:   busyboxImage,
-								Command: []string{"cp", "/bin/echo", "/tmp/bin"},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "tmp-bin",
-										MountPath: "/tmp/bin",
-									},
-								},
-								ImagePullPolicy: corev1.PullIfNotPresent,
-							},
-						},
-						Containers: []corev1.Container{
-							{
-								Name:    "imagepuller",
-								Image:   image,
-								Command: []string{"/tmp/bin/echo", "Image pulled successfully!"},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "tmp-bin",
-										MountPath: "/tmp/bin",
-									},
-								},
-								ImagePullPolicy: pullPolicy,
-							},
-						},
-						Volumes: []corev1.Volume{
-							{
-								Name: "tmp-bin",
-								VolumeSource: corev1.VolumeSource{
-									EmptyDir: &corev1.EmptyDirVolumeSource{},
-								},
-							},
-						},
-						RestartPolicy:    corev1.RestartPolicyNever,
-						ImagePullSecrets: imagecache.Spec.ImagePullSecrets,
-						Tolerations: []corev1.Toleration{
-							{
-								Operator: corev1.TolerationOpExists,
-							},
-						},
-					},
-				},
-			},
-		}
+		job = commonJob(imagecache, image, pullPolicy, hostname, labels, busyboxImage)
 	}
 
 	if serviceAccountName != "" {
@@ -194,7 +77,7 @@ func newImagePullJob(imagecache *fledgedv1alpha2.ImageCache, image string, node 
 }
 
 // newImageDeleteJob constructs a job manifest to delete an image from a node
-func newImageDeleteJob(imagecache *fledgedv1alpha2.ImageCache, image string, node *corev1.Node,
+func newImageDeleteJob(imagecache *fledgedv1alpha3.ImageCache, image string, node *corev1.Node,
 	containerRuntimeVersion string, dockerclientimage string, serviceAccountName string,
 	imageDeleteJobHostNetwork bool, jobPriorityClassName string, criSocketPath string) (*batchv1.Job, error) {
 	hostname := node.Labels["kubernetes.io/hostname"]
@@ -221,8 +104,8 @@ func newImageDeleteJob(imagecache *fledgedv1alpha2.ImageCache, image string, nod
 			Namespace:    imagecache.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(imagecache, schema.GroupVersionKind{
-					Group:   fledgedv1alpha2.SchemeGroupVersion.Group,
-					Version: fledgedv1alpha2.SchemeGroupVersion.Version,
+					Group:   fledgedv1alpha3.SchemeGroupVersion.Group,
+					Version: fledgedv1alpha3.SchemeGroupVersion.Version,
 					Kind:    "ImageCache",
 				}),
 			},

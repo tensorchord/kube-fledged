@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	v1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	v1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -55,6 +56,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=kubefledged.io, Version=v1alpha2
 	case v1alpha2.SchemeGroupVersion.WithResource("imagecaches"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubefledged().V1alpha2().ImageCaches().Informer()}, nil
+
+		// Group=kubefledged.io, Version=v1alpha3
+	case v1alpha3.SchemeGroupVersion.WithResource("imagecaches"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubefledged().V1alpha3().ImageCaches().Informer()}, nil
 
 	}
 

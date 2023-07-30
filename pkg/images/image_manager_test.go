@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	fledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	fledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,15 +69,20 @@ func newTestImageManager(kubeclientset kubernetes.Interface, imagepullpolicy str
 
 func TestPullDeleteImage(t *testing.T) {
 	job := batchv1.Job{}
-	defaultImageCache := fledgedv1alpha2.ImageCache{
+	defaultImageCache := fledgedv1alpha3.ImageCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
 			Namespace: "kube-fledged",
 		},
-		Spec: fledgedv1alpha2.ImageCacheSpec{
-			CacheSpec: []fledgedv1alpha2.CacheSpecImages{
+		Spec: fledgedv1alpha3.ImageCacheSpec{
+			CacheSpec: []fledgedv1alpha3.CacheSpecImages{
 				{
-					Images: []string{"foo"},
+					Images: []fledgedv1alpha3.Image{
+						{
+							Name:           "foo",
+							ForceFullCache: false,
+						},
+					},
 				},
 			},
 		},
@@ -213,7 +218,8 @@ func TestPullDeleteImage(t *testing.T) {
 			})
 		}
 
-		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false, "priority-class-kube-fledged", false, "")
+		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
+			"priority-class-kube-fledged", false, "")
 		var err error
 		if test.action == "pullimage" {
 			_, err = imagemanager.pullImage(test.iwr)
@@ -311,7 +317,8 @@ func TestHandlePodStatusChange(t *testing.T) {
 	}
 	for _, test := range tests {
 		fakekubeclientset := &fakeclientset.Clientset{}
-		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false, "priority-class-kube-fledged", false, "")
+		imagemanager, _ := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
+			"priority-class-kube-fledged", false, "")
 		imagemanager.imageworkstatus[test.pod.Labels["job-name"]] = ImageWorkResult{
 			Status: ImageWorkResultStatusJobCreated,
 			ImageWorkRequest: ImageWorkRequest{
@@ -336,7 +343,7 @@ func TestHandlePodStatusChange(t *testing.T) {
 
 func TestUpdateImageCacheStatus(t *testing.T) {
 	imageCacheName := "fakeimagecache"
-	imageCache := &fledgedv1alpha2.ImageCache{
+	imageCache := &fledgedv1alpha3.ImageCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: imageCacheName,
 		}}
@@ -354,7 +361,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -372,7 +379,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -410,7 +417,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -440,7 +447,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
 						WorkType: ImageCachePurge,
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -479,7 +486,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
 						WorkType: ImageCachePurge,
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -518,7 +525,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
 						WorkType: ImageCachePurge,
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -543,7 +550,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
 						WorkType: ImageCachePurge,
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -577,7 +584,7 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: imageCacheName,
 							},
@@ -624,7 +631,8 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 				return true, nil, apierrors.NewInternalError(fmt.Errorf("fake error"))
 			})
 		}
-		imagemanager, podInformer := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false, "priority-class-kube-fledged", false, "")
+		imagemanager, podInformer := newTestImageManager(fakekubeclientset, "IfNotPresent", "sa-kube-fledged", false,
+			"priority-class-kube-fledged", false, "")
 		for _, pod := range test.pods {
 			if !reflect.DeepEqual(pod, corev1.Pod{}) {
 				podInformer.Informer().GetIndexer().Add(&pod)
@@ -651,15 +659,20 @@ func TestUpdateImageCacheStatus(t *testing.T) {
 }
 
 func TestProcessNextWorkItem(t *testing.T) {
-	defaultImageCache := fledgedv1alpha2.ImageCache{
+	defaultImageCache := fledgedv1alpha3.ImageCache{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
 			Namespace: "kube-fledged",
 		},
-		Spec: fledgedv1alpha2.ImageCacheSpec{
-			CacheSpec: []fledgedv1alpha2.CacheSpecImages{
+		Spec: fledgedv1alpha3.ImageCacheSpec{
+			CacheSpec: []fledgedv1alpha3.CacheSpecImages{
 				{
-					Images: []string{"foo"},
+					Images: []fledgedv1alpha3.Image{
+						{
+							Name:           "foo",
+							ForceFullCache: false,
+						},
+					},
 				},
 			},
 		},
@@ -690,7 +703,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: defaultImageCache.Name,
 							},
@@ -734,7 +747,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: defaultImageCache.Name,
 							},
@@ -775,7 +788,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: defaultImageCache.Name,
 							},
@@ -823,7 +836,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: defaultImageCache.Name,
 							},
@@ -867,7 +880,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 			imageworkstatus: map[string]ImageWorkResult{
 				"fakejob": {
 					ImageWorkRequest: ImageWorkRequest{
-						Imagecache: &fledgedv1alpha2.ImageCache{
+						Imagecache: &fledgedv1alpha3.ImageCache{
 							ObjectMeta: metav1.ObjectMeta{
 								Name: defaultImageCache.Name,
 							},
@@ -903,7 +916,8 @@ func TestProcessNextWorkItem(t *testing.T) {
 	}
 	for _, test := range tests {
 		fakekubeclientset := &fakeclientset.Clientset{}
-		imagemanager, podInformer := newTestImageManager(fakekubeclientset, test.imagepullpolicy, "sa-kube-fledged", false, "priority-class-kube-fledged", false, "")
+		imagemanager, podInformer := newTestImageManager(fakekubeclientset, test.imagepullpolicy, "sa-kube-fledged", false,
+			"priority-class-kube-fledged", false, "")
 		for _, pod := range test.pods {
 			if !reflect.DeepEqual(pod, corev1.Pod{}) {
 				podInformer.Informer().GetIndexer().Add(&pod)

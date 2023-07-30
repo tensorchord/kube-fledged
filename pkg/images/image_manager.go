@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	fledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha2"
+	fledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/apis/kubefledged/v1alpha3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,10 +83,11 @@ type ImageManager struct {
 // ImageWorkRequest has image name, node name, work type and imagecache
 type ImageWorkRequest struct {
 	Image                   string
+	ForceFullCache          bool
 	Node                    *corev1.Node
 	ContainerRuntimeVersion string
 	WorkType                WorkType
-	Imagecache              *fledgedv1alpha2.ImageCache
+	Imagecache              *fledgedv1alpha3.ImageCache
 }
 
 // ImageWorkResult stores the result of pulling and deleting image
@@ -115,7 +116,7 @@ type WorkQueueKey struct {
 	WorkType      WorkType
 	ObjKey        string
 	Status        *map[string]ImageWorkResult
-	OldImageCache *fledgedv1alpha2.ImageCache
+	OldImageCache *fledgedv1alpha3.ImageCache
 }
 
 // NewImageManager returns a new image manager object
@@ -211,8 +212,8 @@ func (m *ImageManager) handlePodStatusChange(pod *corev1.Pod) {
 				iwres.Message = pod.Status.ContainerStatuses[0].State.Terminated.Message
 			}
 		} else {
-			iwres.Reason = fledgedv1alpha2.ImageCacheReasonImagePullStatusUnknown
-			iwres.Message = fledgedv1alpha2.ImageCacheMessageImagePullStatusUnknown
+			iwres.Reason = fledgedv1alpha3.ImageCacheReasonImagePullStatusUnknown
+			iwres.Message = fledgedv1alpha3.ImageCacheMessageImagePullStatusUnknown
 		}
 		if iwres.ImageWorkRequest.WorkType == ImageCachePurge {
 			glog.Infof("Job %s failed (delete: %s --> %s)", pod.Labels["job-name"], iwres.ImageWorkRequest.Image, iwres.ImageWorkRequest.Node.Labels["kubernetes.io/hostname"])
@@ -302,7 +303,7 @@ func (m *ImageManager) updatePendingImageWorkResults(imageCacheName string) erro
 	return nil
 }
 
-func (m *ImageManager) updateImageCacheStatus(imageCache *fledgedv1alpha2.ImageCache, errCh chan<- error) {
+func (m *ImageManager) updateImageCacheStatus(imageCache *fledgedv1alpha3.ImageCache, errCh chan<- error) {
 	wait.Poll(time.Second, m.imagePullDeadlineDuration,
 		func() (done bool, err error) {
 			m.lock.RLock()
@@ -499,7 +500,7 @@ func (m *ImageManager) processNextWorkItem() bool {
 // pullImage pulls the image to the node
 func (m *ImageManager) pullImage(iwr ImageWorkRequest) (*batchv1.Job, error) {
 	// Construct the Job manifest
-	newjob, err := newImagePullJob(iwr.Imagecache, iwr.Image, iwr.Node, m.imagePullPolicy,
+	newjob, err := newImagePullJob(iwr.Imagecache, iwr.Image, iwr.ForceFullCache, iwr.Node, m.imagePullPolicy,
 		m.busyboxImage, m.serviceAccountName, m.jobPriorityClassName)
 	if err != nil {
 		glog.Errorf("Error when constructing job manifest: %v", err)

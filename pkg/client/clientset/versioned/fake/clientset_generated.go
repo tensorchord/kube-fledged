@@ -22,6 +22,8 @@ import (
 	clientset "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned"
 	kubefledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned/typed/kubefledged/v1alpha2"
 	fakekubefledgedv1alpha2 "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned/typed/kubefledged/v1alpha2/fake"
+	kubefledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned/typed/kubefledged/v1alpha3"
+	fakekubefledgedv1alpha3 "github.com/senthilrch/kube-fledged/pkg/client/clientset/versioned/typed/kubefledged/v1alpha3/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -82,4 +84,9 @@ var (
 // KubefledgedV1alpha2 retrieves the KubefledgedV1alpha2Client
 func (c *Clientset) KubefledgedV1alpha2() kubefledgedv1alpha2.KubefledgedV1alpha2Interface {
 	return &fakekubefledgedv1alpha2.FakeKubefledgedV1alpha2{Fake: &c.Fake}
+}
+
+// KubefledgedV1alpha3 retrieves the KubefledgedV1alpha3Client
+func (c *Clientset) KubefledgedV1alpha3() kubefledgedv1alpha3.KubefledgedV1alpha3Interface {
+	return &fakekubefledgedv1alpha3.FakeKubefledgedV1alpha3{Fake: &c.Fake}
 }
